@@ -4,8 +4,46 @@ function M.init()
 end
 
 local lineinfo = {}
+local asm_buffer
+local asm_file_name
+local asm_window
+local ptx_buffer
+local ptx_window
+local augroup = vim.api.nvim_create_augroup("CudaPTX", {})
+
+local function create_ptx_buffer()
+    ptx_buffer = vim.api.nvim_create_buf(false, false)
+    vim.cmd "vsplit"
+    vim.cmd(string.format("buffer %d", ptx_buffer))
+    vim.cmd(string.format("e %s.ptx", asm_file_name))
+    ptx_window = vim.api.nvim_get_current_win()
+    vim.api.nvim_set_current_win(asm_window)
+end
+
+local function update_cursor()
+    local cur_pos = M.find_nearest_line_number()
+    if not cur_pos or not ptx_window then
+        return
+    end
+    vim.api.nvim_win_set_cursor(ptx_window, { cur_pos, 1})
+end
+
+local function create_callbacks()
+    vim.api.nvim_clear_autocmds { group = augroup, buffer = asm_buffer}
+    vim.api.nvim_create_autocmd("CursorMoved", {
+        group = augroup,
+        buffer = asm_buffer,
+        callback = function()
+            update_cursor()
+        end,
+        desc = "CudaPTX : update ptx cursor"
+    })
+end
 
 function M.update()
+    asm_buffer = vim.api.nvim_get_current_buf()
+    asm_file_name = vim.fn.expand('%:r')
+    asm_window = vim.api.nvim_get_current_win()
     lineinfo = {}
     local start = 0
     vim.fn.cursor(1, 1)
@@ -22,6 +60,8 @@ function M.update()
         table.insert(lineinfo, l)
     end
     --print(vim.inspect(lineinfo))
+    create_callbacks()
+    create_ptx_buffer()
 end
 
 local function get_range(start_pos, end_pos, row)
@@ -42,7 +82,7 @@ local function get_range(start_pos, end_pos, row)
     return get_range(mid_pos, end_pos, row)
 end
 
-function M.find_nearest()
+function M.find_nearest_line_number()
     local cursor_pos = vim.fn.getcurpos()
     local row = cursor_pos[2]
     local lineinfo_size = #lineinfo
